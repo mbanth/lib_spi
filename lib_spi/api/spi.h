@@ -50,22 +50,24 @@ typedef interface spi_master_if {
    *  This function will transmit and receive 8 bits of data over the SPI
    *  bus. The data will be transmitted least-significant bit first.
    *
-   *  \param data          the data to transmit the MOSI port.
+   *  \param data     the data to transmit on the MOSI port(s).
+   *  \param num_mosi the number of MOSI ports.
    *
-   *  \returns       the data read in from the MISO port.
+   *  \returns        the data read in from the MISO port.
    */
-  uint8_t transfer8(uint8_t data);
+  uint8_t transfer8(uint8_t data[num_mosi], static const size_t num_mosi);
 
   /** Transfer a 32-bit word over the spi bus.
    *
    *  This function will transmit and receive 32 bits of data over the SPI
    *  bus. The data will be transmitted least-significant bit first.
    *
-   *  \param data    the data to transmit the MOSI port.
+   *  \param data     the data to transmit on the MOSI port(s).
+   *  \param num_mosi the number of MOSI ports.
    *
-   *  \returns       the data read in from the MISO port.
+   *  \returns        the data read in from the MISO port.
    */
-  uint32_t transfer32(uint32_t data);
+  uint32_t transfer32(uint32_t data[num_mosi], static const size_t num_mosi);
 } spi_master_if;
 
 /** Task that implements the SPI proctocol in master mode that is
@@ -83,7 +85,8 @@ typedef interface spi_master_if {
     \param num_clients   the number of clients connected to the task.
     \param clk           a clock block used by the task.
     \param sclk          the SPI clock port.
-    \param mosi          the SPI MOSI (master out, slave in) port.
+    \param mosi          an array of SPI MOSI (master out, slave in) ports.
+    \param num_mosi      the number of MOSI ports.
     \param miso          the SPI MISO (master in, slave out) port.
     \param p_ss          an array of ports connected to the slave select signals
                          of the slave.
@@ -94,7 +97,8 @@ typedef interface spi_master_if {
 void spi_master(server interface spi_master_if i[num_clients],
         static const size_t num_clients,
         out buffered port:32 sclk,
-        out buffered port:32 ?mosi,
+        out buffered port:32 ?mosi[num_mosi],
+        static const size_t num_mosi,
         in buffered port:32 ?miso,
         out port p_ss[num_slaves],
         static const size_t num_slaves,

@@ -77,9 +77,11 @@ static const uint8_t unshuffle[256] = {
 #pragma unsafe arrays
 static uint8_t transfer8_sync_zero_clkblk(
         out buffered port:32 sclk,
-        out buffered port:32 ?mosi,
+        out buffered port:32 ?mosi[num_mosi],
+        static const size_t num_mosi,
         in buffered port:32 ?miso,
-        uint8_t data, const unsigned period,
+        uint8_t data[num_mosi],
+        const unsigned period,
         unsigned cpol, unsigned cpha){
     unsigned time, d, c = 0xaaaa>>(cpol ^ cpha);
     time = partout_timestamped(sclk, 1, cpol);
@@ -91,8 +93,10 @@ static uint8_t transfer8_sync_zero_clkblk(
         //sclk @ time <:>> c;
 
         if(!isnull(mosi)){
-            partout_timed(mosi, 1, data>>7, time);
-            data<<=1;
+            for(unsigned j = 0; j < num_mosi; ++j) {
+                partout_timed(mosi[j], 1, data[j]>>7, time);
+                data[j]<<=1;
+            }
         }
         time += period / 2;
 
@@ -113,9 +117,11 @@ static uint8_t transfer8_sync_zero_clkblk(
 #pragma unsafe arrays
 static uint32_t transfer32_sync_zero_clkblk(
         out buffered port:32 sclk,
-        out buffered port:32 ?mosi,
+        out buffered port:32 ?mosi[num_mosi],
+        static const size_t num_mosi,
         in buffered port:32 ?miso,
-        uint32_t data, const unsigned period,
+        uint32_t data[num_mosi],
+        const unsigned period,
         const unsigned cpol, const unsigned cpha){
     unsigned time;
     uint32_t d;
@@ -126,21 +132,23 @@ static uint32_t transfer32_sync_zero_clkblk(
     for(unsigned j=0;j<2;j++){
         unsigned c = 0xaaaaaaaa>>(cpol ^ cpha);
         for(unsigned i=0;i<16;i++){
-          partout_timed(sclk, 1, c, time);
-          if(!isnull(mosi)){
-              partout_timed(mosi, 1, data>>31, time);
-              data<<=1;
-          }
-          c>>=1;
-          time += period / 2;
-          partout_timed(sclk, 1, c, time);
-          c>>=1;
-          if(!isnull(miso)){
-              unsigned t;
-              miso @ time - 1 :> t;
-              d = (d<<1) + (t&1);
-          }
-          time += (period + 1)/2;
+            partout_timed(sclk, 1, c, time);
+            if(!isnull(mosi)){
+                for(unsigned k = 0; k < num_mosi; ++k) {
+                    partout_timed(mosi[k], 1, data[k]>>31, time);
+                    data[k]<<=1;
+                }
+            }
+            c>>=1;
+            time += period / 2;
+            partout_timed(sclk, 1, c, time);
+            c>>=1;
+            if(!isnull(miso)){
+                unsigned t;
+                miso @ time - 1 :> t;
+                d = (d<<1) + (t&1);
+            }
+            time += (period + 1)/2;
         }
         time += 80;
     }
@@ -183,43 +191,62 @@ static unsigned make_8bit_clock(unsigned cpol, unsigned cpha){
 }
 static uint8_t transfer8_sync_one_clkblk(
         out buffered port:32 sclk,
-        out buffered port:32 ?mosi,
+        out buffered port:32 ?mosi[num_mosi],
+        static const size_t num_mosi,
         in buffered port:32 ?miso,
-        uint8_t data,
+        uint8_t data[num_mosi],
         unsigned cpol, unsigned cpha){
     unsigned double_clock = make_8bit_clock(cpol, cpha);
-    uint16_t double_data = zip8(data);
     unsigned t = partout_timestamped(sclk, 1, cpol);
     t+=80;
     partout_timed(sclk, 17, double_clock, t);
-    if(!isnull(mosi))partout_timed(mosi, 16, double_data, t);
-    if(!isnull(miso)) miso  @ t + 31 :> double_data;
-    return unzip_16(double_data);
+    if(!isnull(mosi)) {
+        for(unsigned i = 0; i < num_mosi; ++i) {
+            uint16_t double_data = zip8(data[i]);
+            partout_timed(mosi[i], 16, double_data, t);
+        }
+    }
+    uint16_t double_data_in;
+    if(!isnull(miso)) miso  @ t + 31 :> double_data_in;
+    return unzip_16(double_data_in);
 }
 
 static uint32_t transfer32_sync_one_clkblk(
         out buffered port:32 sclk,
-        out buffered port:32 ?mosi,
+        out buffered port:32 ?mosi[num_mosi],
+        static const size_t num_mosi,
         in buffered port:32 ?miso,
-        uint32_t data,
+        uint32_t data[num_mosi],
         unsigned cpol, unsigned cpha){
 
     unsigned t;
     unsigned double_clock = 0xaaaaaaaa>>(cpol ^ cpha);
 
-    uint32_t double_data_0;
-    uint32_t double_data_1;
-    zip32(data, double_data_0, double_data_1);
     t = partout_timestamped(sclk, 1, cpol);
     t+=80;
     sclk @ t <: double_clock;
-    if(!isnull(mosi))mosi @ t<: double_data_0;
+    uint32_t double_data_out_0[num_mosi];
+    uint32_t double_data_out_1[num_mosi];
+    for(unsigned i = 0; i < num_mosi; ++i) {
+        zip32(data[i], double_data_out_0[i], double_data_out_1[i]);
+    }
+    if(!isnull(mosi)) {
+        for(unsigned i = 0; i < num_mosi; ++i) {
+            mosi[i] @ t<: double_data_out_0[i];
+        }
+    }
     sclk <: double_clock;
-    if(!isnull(mosi))mosi <: double_data_1;
-    if(!isnull(miso))miso @ t + 31:> double_data_0;
-    if(!isnull(miso))miso :> double_data_1;
+    if(!isnull(mosi)) {
+        for(unsigned i = 0; i < num_mosi; ++i) {
+            mosi[i] @ t<: double_data_out_1[i];
+        }
+    }
+    uint32_t double_data_in_0;
+    uint32_t double_data_in_1;
+    if(!isnull(miso))miso @ t + 31:> double_data_in_0;
+    if(!isnull(miso))miso :> double_data_in_1;
 
-    return byterev(unzip_32(double_data_0) | (unzip_32(double_data_1)<<16));
+    return byterev(unzip_32(double_data_in_0) | (unzip_32(double_data_in_1)<<16));
 }
 
 static void get_mode_bits(spi_mode_t mode, unsigned &cpol, unsigned &cpha){
@@ -237,7 +264,8 @@ static void get_mode_bits(spi_mode_t mode, unsigned &cpol, unsigned &cpha){
 void spi_master(server interface spi_master_if i[num_clients],
         static const size_t num_clients,
         out buffered port:32 sclk,
-        out buffered port:32 ?mosi,
+        out buffered port:32 ?mosi[num_mosi],
+        static const size_t num_mosi,
         in buffered port:32 ?miso,
         out port p_ss[num_slaves],
         static const size_t num_slaves,
@@ -251,15 +279,23 @@ void spi_master(server interface spi_master_if i[num_clients],
         configure_clock_ref(cb, 2);
         if(!isnull(miso))configure_in_port(miso,  cb);
         if(!isnull(miso))set_port_sample_delay(miso);
-        if(!isnull(mosi))configure_out_port(mosi, cb, 0);
+
+        for(unsigned i = 0; i < num_mosi; ++i) {
+            if(!isnull(mosi)) configure_out_port(mosi[i], cb, 0);
+        }
+
         configure_out_port(sclk, cb, 0);
         start_clock(cb);
     } else {
         if(!isnull(miso)) set_port_sample_delay(miso);
     }
 
-    if(!isnull(mosi))
-        mosi <: 0xffffffff;
+    if(!isnull(mosi)) {
+        for(unsigned i = 0; i < num_mosi; ++i) {
+            mosi[i] <: 0xffffffff;
+        }
+    }
+
     unsigned cpol, cpha, period;
     unsigned selected_device = 0;
     int accepting_new_transactions = 1;
@@ -319,19 +355,27 @@ void spi_master(server interface spi_master_if i[num_clients],
                 p_ss[selected_device] @ time <: 1;
                 break;
             }
-            case i[int x].transfer8(uint8_t data)-> uint8_t r :{
+            case i[int x].transfer8(uint8_t data[num_mosi], static const size_t num_mosi)-> uint8_t r :{
+                uint8_t local_data[num_mosi];
+                for(unsigned i = 0; i < num_mosi; ++i) {
+                    local_data[i] = data[i];
+                }
                 if(isnull(cb)) {
-                    r = transfer8_sync_zero_clkblk(sclk, mosi, miso, data, period, cpol, cpha);
+                    r = transfer8_sync_zero_clkblk(sclk, mosi, num_mosi, miso, local_data, period, cpol, cpha);
                 } else {
-                    r = transfer8_sync_one_clkblk(sclk, mosi, miso, data, cpol, cpha);
+                    r = transfer8_sync_one_clkblk(sclk, mosi, num_mosi, miso, local_data, cpol, cpha);
                 }
                 break;
             }
-            case i[int x].transfer32(uint32_t data) -> uint32_t r:{
+            case i[int x].transfer32(uint32_t data[num_mosi], static const size_t num_mosi) -> uint32_t r:{
+                uint32_t local_data[num_mosi];
+                for(unsigned i = 0; i < num_mosi; ++i) {
+                    local_data[i] = data[i];
+                }
                 if(isnull(cb)) {
-                    r = transfer32_sync_zero_clkblk(sclk, mosi, miso, data, period, cpol, cpha);
+                    r = transfer32_sync_zero_clkblk(sclk, mosi, num_mosi, miso, local_data, period, cpol, cpha);
                 } else {
-                    r = transfer32_sync_one_clkblk(sclk, mosi, miso, data, cpol, cpha);
+                    r = transfer32_sync_one_clkblk(sclk, mosi, num_mosi, miso, local_data, cpol, cpha);
                 }
                 break;
             }
