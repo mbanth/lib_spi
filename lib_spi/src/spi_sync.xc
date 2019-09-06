@@ -266,7 +266,10 @@ void spi_master(server interface spi_master_if i[num_clients],
 
     while(1){
         select {
-            case accepting_new_transactions => i[int x].begin_transaction(unsigned device_index,
+            case i[int x].begin_transaction(unsigned device_index,
+//Note this is a work around to reduce channel count down to 1 on the client
+//It is a safe thing to do as long as there is only one client
+//            case accepting_new_transactions => i[int x].begin_transaction(unsigned device_index,
                     unsigned speed_in_khz, spi_mode_t mode):{
                 //Get the mode bits from the spi_mode
                 get_mode_bits(mode, cpol, cpha);
