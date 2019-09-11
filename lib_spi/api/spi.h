@@ -31,7 +31,7 @@ typedef interface spi_master_if {
    */
 //Note this is a work around to reduce channel count down to 1 on the client
 //It is a safe thing to do as long as there is only one client
-//[[guarded]]
+[[guarded]]
   void begin_transaction(unsigned device_index,
                          unsigned speed_in_khz, spi_mode_t mode);
 
