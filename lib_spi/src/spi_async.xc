@@ -6,6 +6,9 @@
 
 #include "spi.h"
 
+#include <platform.h>
+on tile[0]: clock clk_ref = XS1_CLKBLK_REF;
+
 typedef struct {
     unsigned client_id;
     unsigned device_index;
@@ -392,9 +395,20 @@ void spi_master_async(server interface spi_master_async_if i[num_clients],
             case i[int x].shutdown(void):
                 move(buffer_rx);
                 move(buffer_tx);
+                // Reset ports and connect to ref clock
                 set_port_use_on(sclk);
-                if(!isnull(mosi)) set_port_use_on(mosi);
-                if(!isnull(miso)) set_port_use_on(miso);
+                set_port_clock(sclk, clk_ref);
+                if(!isnull(mosi)) {
+                    set_port_use_on(mosi);
+                    set_port_clock(mosi, clk_ref);
+                }
+                if(!isnull(miso)) {
+                    set_port_use_on(miso);
+                    set_port_clock(miso, clk_ref);
+                }
+                // Ensure time registers of ports are reset
+                stop_clock(clk_ref);
+                start_clock(clk_ref);
                 return;
         }
     }
